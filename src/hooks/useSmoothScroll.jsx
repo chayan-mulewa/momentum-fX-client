@@ -1,91 +1,79 @@
 import { useEffect } from 'react';
+import { validateAndSetDefault } from '../utils/index';
 
 const useSmoothScroll = () => {
 
-    const smoothScroll = (damping, speed) => {
+    const smoothScroll = (momentum, touchMomentum, speed) => {
 
-        const MAX_DAMPING = 1;
-        const MIN_DAMPING = 0.01;
-        const DEFAULT_DAMPING = 0.1;
-
-        const MAX_SPEED = 10;
-        const MIN_SPEED = 0.5;
-        const DEFAULT_SPEED = 1;
+        momentum = validateAndSetDefault(momentum, 0.01, 1, 0.04, 'Smooth Scroll');
+        touchMomentum = validateAndSetDefault(touchMomentum, 0.01, 1, 0.02, 'Touch Momentum');
+        speed = validateAndSetDefault(speed, 1, 10, 1, 'Speed');
 
         useEffect(() => {
-
-            // Validate damping value
-            let validDamping = damping;
-            if (typeof damping !== 'number' || damping < MIN_DAMPING || damping > MAX_DAMPING) {
-                console.error(`Damping value ${damping} is invalid. It must be a number between 0.01 and 1. Setting to default (0.1).`);
-                validDamping = DEFAULT_DAMPING;
-            }
-
-            // Validate speed value
-            let validSpeed = speed;
-            if (typeof speed !== 'number' || speed < MIN_SPEED || speed > MAX_SPEED) {
-                console.error(`Speed value ${speed} is invalid. It must be a number between 0.5 and 3. Setting to default (1).`);
-                validSpeed = DEFAULT_SPEED;
-            }
 
             let currentScrollY = window.scrollY;
             let targetScrollY = currentScrollY;
             let touchStartY = 0;
             let rafId = null;
 
-            const ease = validDamping;
-            const scrollSpeed = validSpeed;
-
-            const smoothScroll = () => {
-                currentScrollY += (targetScrollY - currentScrollY) * ease;
+            const smoothScroll = (isTouch = false) => {
+                const currentMomentum = isTouch ? touchMomentum : momentum;
+                currentScrollY += (targetScrollY - currentScrollY) * currentMomentum;
                 window.scrollTo(0, Math.round(currentScrollY));
 
-                if (Math.abs(targetScrollY - currentScrollY) > ease) {
-                    rafId = requestAnimationFrame(smoothScroll);
+                if (Math.abs(targetScrollY - currentScrollY) > currentMomentum) {
+                    rafId = requestAnimationFrame(() => smoothScroll(isTouch));
                 } else {
-                    rafId = null; // Reset animation frame ID when scrolling stops
+                    rafId = null;
                 }
             };
 
             const onScroll = (e) => {
+                e.preventDefault();
+                const deltaY = window.scrollY - currentScrollY;
+                targetScrollY += deltaY;
+                targetScrollY = Math.max(0, Math.min(targetScrollY, document.body.scrollHeight - window.innerHeight));
+
                 if (!rafId) {
-                    targetScrollY = window.scrollY;
-                    currentScrollY = window.scrollY;
+                    // currentScrollY = window.scrollY;
+                    // targetScrollY = window.scrollY;
                     smoothScroll();
                 }
             };
 
             const onWheel = (e) => {
                 e.preventDefault();
-                targetScrollY += e.deltaY * scrollSpeed;
+                targetScrollY += e.deltaY * speed;
                 targetScrollY = Math.max(0, Math.min(targetScrollY, document.body.scrollHeight - window.innerHeight));
 
                 if (!rafId) {
                     smoothScroll();
                 }
+            };
+
+            const onTouchMove = (e) => {
+                e.preventDefault();
+                const deltaY = touchStartY - e.touches[0].clientY;
+                targetScrollY += deltaY * speed;
+                targetScrollY = Math.max(0, Math.min(targetScrollY, document.body.scrollHeight - window.innerHeight));
+
+                if (!rafId) {
+                    smoothScroll(true);
+                }
+                touchStartY = e.touches[0].clientY;
             };
 
             const onTouchStart = (e) => {
                 touchStartY = e.touches[0].clientY;
             };
 
-            const onTouchMove = (e) => {
-                e.preventDefault();
-                const touchDeltaY = (touchStartY - e.touches[0].clientY) * scrollSpeed;
-                targetScrollY += touchDeltaY;
-                targetScrollY = Math.max(0, Math.min(targetScrollY, document.body.scrollHeight - window.innerHeight));
-
-                if (!rafId) {
-                    smoothScroll();
-                }
-                touchStartY = e.touches[0].clientY;
-            };
-
-            // Add event listeners
-            window.addEventListener("scroll", onScroll, { passive: true });
-            window.addEventListener("wheel", onWheel, { passive: false });
-            window.addEventListener("touchstart", onTouchStart, { passive: false });
-            window.addEventListener("touchmove", onTouchMove, { passive: false });
+            // Add event listeners only once
+            if (!rafId) {
+                window.addEventListener("scroll", onScroll, { passive: false });
+                window.addEventListener("wheel", onWheel, { passive: false });
+                window.addEventListener("touchstart", onTouchStart, { passive: false });
+                window.addEventListener("touchmove", onTouchMove, { passive: false });
+            }
 
             // Cleanup function
             return () => {
@@ -98,8 +86,7 @@ const useSmoothScroll = () => {
                 }
             };
 
-        }, [damping, speed]); // Ensure useEffect dependencies include both damping and speed
-
+        }, [momentum, touchMomentum, speed]);
     };
 
     return [smoothScroll];
